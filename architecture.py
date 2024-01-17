@@ -44,7 +44,7 @@ class Stem(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
+# Alternative possible block arrangement [88,176,352,704],[2,2,4,2]
 class Body(nn.Module):
     """The main body of the classifier, modelled primarily after ConvNeXt-T
     with some experimental alterations, such as using inverse bottleneck blocks
@@ -55,8 +55,8 @@ class Body(nn.Module):
     21m parameter limit.
     """
     def __init__(self, 
-                 channels = [96,192,384,768],
-                 blocks = [2,2,5,2]
+                 channels = [80,160,320,640],
+                 blocks = [2,2,6,2]
                  ):
         
         super().__init__()
@@ -95,22 +95,11 @@ class Head(nn.Module):
         avg_layer = nn.AdaptiveAvgPool2d(pool_dim)
         flatten_layer = nn.Flatten()
         in_dim = input_channels*pool_dim**2
-        num_layers = max(1,ceil(log2(num_classes/in_dim)))
 
-        linear_layers=[]
-        
-        for num in range(num_layers):
-            if num == num_layers - 1:
-                linear_layers.append(nn.Linear(in_dim, num_classes))
-            else:
-                out_dim = 2*in_dim
-                linear_layers.append(nn.Linear(in_dim, out_dim))
-                in_dim=out_dim
-
-        self.net = nn.Sequential(avg_layer, flatten_layer, *linear_layers)
+        self.net = nn.Sequential(avg_layer, flatten_layer, nn.Linear(in_dim, num_classes))
 
     def forward(self,x):
-        self.net(x)
+        return self.net(x)
 
     
 
