@@ -25,7 +25,7 @@ class Stem(nn.Module):
     
 
     """
-    def __init__(self, out_channels = 96, stem_type = 'patchify'):
+    def __init__(self, out_channels = 80, stem_type = 'patchify'):
 
         super().__init__()
         if stem_type == 'patchify':
@@ -103,23 +103,19 @@ class Head(nn.Module):
 
     
 
-                
+class FaceNN(nn.Module):
+    def __init__(self,
+                 channels = [80,160,320,640],
+                 blocks = [2,2,6,2],
+                 stem_type = 'patchify',
+                 pool_dim = 1,
+                 num_classes = 7001
+):
 
+        super().__init__()
+        stem = Stem(channels[0], stem_type)
+        body = Body(channels, blocks)
+        head = Head(channels[-1], pool_dim, num_classes)
 
-
-
-
-
-
-# class ImgClassifier(nn.Module):
-#     def __init__(self,
-#                  num_classes=1000,
-#                  width_mult=1.0,
-#                  inverted_residual_setting=None,
-#                  round_nearest=8,
-#                  block=None,
-#                  norm_layer=None):
-
-#         stem = Stem(stem_channels, stem_type)
 
         
