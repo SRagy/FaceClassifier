@@ -113,9 +113,13 @@ class FaceNN(nn.Module):
 ):
 
         super().__init__()
-        stem = Stem(channels[0], stem_type)
-        body = Body(channels, blocks)
-        head = Head(channels[-1], pool_dim, num_classes)
+        self.stem = Stem(channels[0], stem_type)
+        self.body = Body(channels, blocks)
+        self.head = Head(channels[-1], pool_dim, num_classes)
 
-
+    def forward(self,x):
+        x = self.stem(x)
+        x = self.body(x)
+        x = self.head(x)
+        return x
         
