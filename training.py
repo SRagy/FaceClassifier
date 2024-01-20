@@ -33,7 +33,8 @@ class Trainer:
                  use_lr_scheduler: bool = True,
                  warmup_epochs: int = 0,
                  label_smoothing: float = 0.1,
-                 use_cutmix: bool = True,
+                 use_cutmix: bool = False,
+                 num_classes: int = None,
                  device = torch.device('cpu'),
                  ) -> None:
         """
@@ -51,7 +52,8 @@ class Trainer:
             use_lr_scheduler (bool, optional): If True, uses scheduler with cosine decay. Defaults to True.
             warmup_epochs (int, optional): Epochs for linear warmup. Defaults to 20.
             label_smoothing (float, optional): label smoothing for cross entropy loss. Defaults to 0.1.
-            use_cutmix (bool, optional): Whether or not to use cutmix&mixup data augmentation.
+            use_cutmix (bool, optional): Whether or not to use cutmix&mixup data augmentation. Default None.
+            num_classes (int, optional): number of classes. Needed if cutmix is to be used.
             device (Device, optional): cpu or gpu to train on.
         """
         
@@ -66,9 +68,11 @@ class Trainer:
         self._use_cutmix = use_cutmix
         
         # WARNING: currently has num_classes hardcoded. Should edit to read from dataloader.
-        if use_cutmix: 
-            self._cutmix = v2.CutMix(num_classes=7001)
-            self._mixup = v2.MixUp(num_classes=7001)
+        if use_cutmix:
+            if num_classes is None:
+                raise ValueError("num_classes must be defined if using cutmix")
+            self._cutmix = v2.CutMix(num_classes=num_classes)
+            self._mixup = v2.MixUp(num_classes=num_classes)
 
         optimisation_parameters = neural_net.parameters()
         self._optimizer = optimizer(optimisation_parameters, lr=base_learning_rate, weight_decay=0.05)

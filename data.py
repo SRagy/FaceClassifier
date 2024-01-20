@@ -18,7 +18,10 @@ default_train_transforms = v2.Compose([v2.RandomRotation(20),
 class DefaultLoader(DataLoader):
     def __init__(self, directory, transform=v2.ToTensor(), keep_ratio=1,  *args, **kwargs):
         dataset = ImageFolder(directory, transform)
-        dataset = Subset(dataset, range(int(keep_ratio*len(dataset))))
+        slice_index = int(keep_ratio*len(dataset))
+        self.label_count = len(set(dataset.targets[:slice_index]))
+        # self.label_count = int(keep_ratio*len(set(dataset.targets)))
+        dataset = Subset(dataset, range(slice_index))
         super().__init__(dataset, *args, **kwargs)
 
     @classmethod
