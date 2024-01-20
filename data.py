@@ -1,28 +1,29 @@
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import v2
 from PIL import Image
 import glob
 
 
-
 default_train_transforms = v2.Compose([v2.RandomRotation(20),
                                        v2.RandomHorizontalFlip(),
                                        v2.ColorJitter(0.25,0.25,0.25,0.25),
-                                       v2.ToTensor(),
-                                       v2.Normalize([0.5, 0.5, 0.5], 
-                                                            [0.5, 0.5, 0.5])])
+                                       v2.ToImage(), 
+                                       v2.ToDtype(torch.float32, scale=True),
+                                       v2.Normalize([0.5103, 0.4014, 0.3509], [0.2708, 0.2363, 0.2226])])
+
 
 
 class DefaultLoader(DataLoader):
-    def __init__(self, directory, transform = v2.ToTensor(),  *args, **kwargs):
+    def __init__(self, directory, transform=v2.ToTensor(), keep_ratio=1,  *args, **kwargs):
         dataset = ImageFolder(directory, transform)
+        dataset = Subset(dataset, range(int(keep_ratio*len(dataset))))
         super().__init__(dataset, *args, **kwargs)
 
     @classmethod
-    def load_train(cls, *args, **kwargs):
-        return cls('data/train', *args, **kwargs)
+    def load_train(cls, transform=v2.ToTensor(), *args, **kwargs):
+        return cls('data/train', transform, *args, **kwargs)
 
     @classmethod
     def load_val(cls, *args, **kwargs):

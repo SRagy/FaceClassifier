@@ -29,7 +29,7 @@ class Trainer:
                  early_stop_bound: int = 20,
                  max_epochs: int = 300,
                  optimizer: Optimizer = AdamW,
-                 base_learning_rate: float = 1e-4,
+                 base_learning_rate: float = 1e-3,
                  use_lr_scheduler: bool = True,
                  warmup_epochs: int = 0,
                  label_smoothing: float = 0.1,
@@ -76,12 +76,13 @@ class Trainer:
             self._lr_scheduler=LinearWarmupCosineAnnealingLR(self._optimizer,
                                                              warmup_epochs = warmup_epochs,
                                                              max_epochs = max_epochs,
-                                                             warmup_start_lr=1e-5,
+                                                             warmup_start_lr=1e-3,
                                                              eta_min = 1e-5
                                                             )
 
         self.train_losses = []
         self.val_errors = []
+        self.val_losses = []
 
 
     def _loss(self, outputs: Tensor, labels: Tensor, label_smoothing = 0.0):
@@ -161,6 +162,7 @@ class Trainer:
     
     def log_and_print(self, train_loss, val_loss, val_error, since_improvement):
         self.train_losses.append(train_loss.item())
+        self.val_losses.append(val_loss.item())
         self.val_errors.append(val_error.item())
         print(f'\r epoch = {self._trained_epochs}, '
               f'train loss = {train_loss:.3e}, '
