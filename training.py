@@ -21,6 +21,7 @@ class Trainer:
         neural_net (nn.Module) - a neural network to be trained 
         train_losses (list) - a per epoch record of the training loss
         val_losses (list) - a per epoch record of the validation loss.
+        correct_fracs (     list) - a per epoch record of correctness rate.
     """
     def __init__(self,
                  train_loader: DataLoader,
@@ -28,12 +29,12 @@ class Trainer:
                  neural_net: Module,
                  early_stop_bound: int = 20,
                  max_epochs: int = 300,
-                 optimizer: Optimizer = Adam,
-                 base_learning_rate: float = 1e-3,
+                 optimizer: Optimizer = AdamW,
+                 base_learning_rate: float = 5e-4,
                  use_lr_scheduler: bool = True,
-                 warmup_epochs: int = 0,
+                 warmup_epochs: int = 20,
                  label_smoothing: float = 0.1,
-                 use_cutmix: bool = False,
+                 use_cutmix: bool = True,
                  num_classes: int = None,
                  device = torch.device('cpu'),
                  save_and_load_filename: str = 'checkpoint/trainer_state.pkl'
@@ -84,7 +85,7 @@ class Trainer:
             self._lr_scheduler=LinearWarmupCosineAnnealingLR(self._optimizer,
                                                              warmup_epochs = warmup_epochs,
                                                              max_epochs = max_epochs,
-                                                             warmup_start_lr=1e-3,
+                                                             warmup_start_lr=1e-4,
                                                              eta_min = 1e-5
                                                             )
 
@@ -103,7 +104,7 @@ class Trainer:
         Returns:
             Tensor: value of loss.
         """
-        return cross_entropy(outputs, labels, label_smoothing = self._label_smoothing)
+        return cross_entropy(outputs, labels, label_smoothing = label_smoothing)
 
     def training_loop(self, dataloader: DataLoader):
         """Executes a training epoch.
@@ -120,7 +121,8 @@ class Trainer:
             images = images.to(self._device)
             labels = labels.to(self._device)
             
-            if self._use_cutmix:
+            # 10% chance of using cutmix or mixup.
+            if self._use_cutmix and torch.rand([]) < 0.1: 
                 cutmix_or_mixup = v2.RandomChoice([self._cutmix, self._mixup])
                 images, labels = cutmix_or_mixup(images, labels)
 
@@ -173,10 +175,15 @@ class Trainer:
         self.train_losses.append(train_loss.item())
         self.val_losses.append(val_loss.item())
         self.correct_fracs.append(correct_frac.item())
+        if self._use_lr_scheduler:
+            lr = self._lr_scheduler.get_last_lr()
+        else:
+            lr = 'base'
         print(f'\r epoch = {self._trained_epochs}, '
               f'train loss = {train_loss:.3e}, '
               f'percent_correct = {(100 * correct_frac):>0.1f}%, '
-              f'epochs since improvement = {since_improvement}   ', end='')
+              f'epochs since improvement = {since_improvement}, '
+              f'lr={lr}', end='\n')
 
     def save(self):
         filename = self._save_and_load_filename

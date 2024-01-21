@@ -16,17 +16,17 @@ default_train_transforms = v2.Compose([v2.RandomRotation(20),
 
 
 class DefaultLoader(DataLoader):
-    def __init__(self, directory, transform=v2.ToTensor(), keep_ratio=1,  *args, **kwargs):
+    def __init__(self, directory, transform=v2.ToTensor(), shuffle=True, keep_ratio=1, **kwargs):
         dataset = ImageFolder(directory, transform)
         slice_index = int(keep_ratio*len(dataset))
         self.label_count = len(set(dataset.targets[:slice_index]))
         # self.label_count = int(keep_ratio*len(set(dataset.targets)))
         dataset = Subset(dataset, range(slice_index))
-        super().__init__(dataset, *args, **kwargs)
+        super().__init__(dataset, shuffle=shuffle, **kwargs)
 
     @classmethod
-    def load_train(cls, transform=v2.ToTensor(), *args, **kwargs):
-        return cls('data/train', transform, *args, **kwargs)
+    def load_train(cls, transform=v2.ToTensor(), shuffle=True, *args, **kwargs):
+        return cls('data/train', transform, shuffle=shuffle, *args, **kwargs)
 
     @classmethod
     def load_val(cls, *args, **kwargs):
