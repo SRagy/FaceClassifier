@@ -28,7 +28,7 @@ class Trainer:
                  neural_net: Module,
                  early_stop_bound: int = 20,
                  max_epochs: int = 300,
-                 optimizer: Optimizer = AdamW,
+                 optimizer: Optimizer = Adam,
                  base_learning_rate: float = 1e-3,
                  use_lr_scheduler: bool = True,
                  warmup_epochs: int = 0,
@@ -36,6 +36,7 @@ class Trainer:
                  use_cutmix: bool = False,
                  num_classes: int = None,
                  device = torch.device('cpu'),
+                 save_and_load_filename: str = 'checkpoint/trainer_state.pkl'
                  ) -> None:
         """
         Inits Trainer.
@@ -55,6 +56,7 @@ class Trainer:
             use_cutmix (bool, optional): Whether or not to use cutmix&mixup data augmentation. Default None.
             num_classes (int, optional): number of classes. Needed if cutmix is to be used.
             device (Device, optional): cpu or gpu to train on.
+            save_and_load_filename (str, optional): directory for saving class instances.
         """
         
         self.neural_net = neural_net
@@ -65,7 +67,9 @@ class Trainer:
         self._trained_epochs = 0
         self._device = device
         self._label_smoothing = label_smoothing
+        self._use_lr_scheduler = use_lr_scheduler
         self._use_cutmix = use_cutmix
+        self._save_and_load_filename = save_and_load_filename
         
         # WARNING: currently has num_classes hardcoded. Should edit to read from dataloader.
         if use_cutmix:
@@ -85,7 +89,7 @@ class Trainer:
                                                             )
 
         self.train_losses = []
-        self.val_errors = []
+        self.correct_fracs = []
         self.val_losses = []
 
 
@@ -127,7 +131,8 @@ class Trainer:
             loss.backward()
             self._optimizer.step()
         # mean_loss = total_loss/len(dataloader.dataset) 
-        self._lr_scheduler.step()
+        if self._use_lr_scheduler:
+            self._lr_scheduler.step()
         return total_loss
     
     
@@ -164,21 +169,23 @@ class Trainer:
 #             total_loss += self._loss(predictions, labels, label_smoothing=0.0).detach()
 #         return total_loss
     
-    def log_and_print(self, train_loss, val_loss, val_error, since_improvement):
+    def log_and_print(self, train_loss, val_loss, correct_frac, since_improvement):
         self.train_losses.append(train_loss.item())
         self.val_losses.append(val_loss.item())
-        self.val_errors.append(val_error.item())
+        self.correct_fracs.append(correct_frac.item())
         print(f'\r epoch = {self._trained_epochs}, '
               f'train loss = {train_loss:.3e}, '
-              f'percent_correct = {(100 * val_error):>0.1f}%, '
+              f'percent_correct = {(100 * correct_frac):>0.1f}%, '
               f'epochs since improvement = {since_improvement}   ', end='')
 
-    def save(self, filename='checkpoint/trainer_state.pkl'):
+    def save(self):
+        filename = self._save_and_load_filename
         with open(filename, 'wb') as f:
             pickle.dump(self.__dict__, f)
             print(f"saved trainer state at epoch {self._trained_epochs}")
 
-    def load(self, filename='checkpoint/trainer_state.pkl'):
+    def load(self):
+        filename = self._save_and_load_filename
         with open(filename, 'rb') as f:
             self.__dict__ = pickle.load(f)
         print(f"loaded trainer state at epoch {self._trained_epochs}")
@@ -197,20 +204,20 @@ class Trainer:
             raise Exception(f"Already trained density estimator for the \
                             maximum number of epochs ({self._max_epochs})")
 
-        best_error = torch.inf
+        best_loss = torch.inf
         rounds_since_improvement = 0
         for i in range(epochs):
             self._trained_epochs += 1
             train_loss = self.training_loop(self._train_loader)
-            val_loss, val_error = self.validation_loop(self._val_loader)
-            if val_error < best_error:
-                best_error = val_error
+            val_loss, correct_frac = self.validation_loop(self._val_loader)
+            if val_loss < best_loss:
+                best_loss = val_loss
                 rounds_since_improvement = 0
             else:
                 rounds_since_improvement+=1
                 
 
-            self.log_and_print(train_loss, val_loss, val_error, rounds_since_improvement)
+            self.log_and_print(train_loss, val_loss, correct_frac, rounds_since_improvement)
             self.save()
             if rounds_since_improvement == self._early_stop_bound:
                 break
