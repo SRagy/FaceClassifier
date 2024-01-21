@@ -32,6 +32,7 @@ class Trainer:
                  optimizer: Optimizer = AdamW,
                  base_learning_rate: float = 5e-4,
                  use_lr_scheduler: bool = True,
+                 use_amp: bool = True,
                  warmup_epochs: int = 20,
                  label_smoothing: float = 0.1,
                  use_cutmix: bool = True,
@@ -49,9 +50,10 @@ class Trainer:
             early_stop_bound (int, optional): Used in early stopping condition - the number of 
             rounds of no improvement after which to stop. Defaults to 20.
             max_epochs (int, optional): For if early stopping does not occur. Defaults to 300.
-            optimizer (Optimizer, optional): Defaults to Adam.
+            optimizer (Optimizer, optional): Defaults to AdamW.
             base_learning_rate (float, optional): Defaults to 3e-4.
             use_lr_scheduler (bool, optional): If True, uses scheduler with cosine decay. Defaults to True.
+            use_amp (bool, optional): Whether to use automatic mixed precision. Defaults to True.
             warmup_epochs (int, optional): Epochs for linear warmup. Defaults to 20.
             label_smoothing (float, optional): label smoothing for cross entropy loss. Defaults to 0.1.
             use_cutmix (bool, optional): Whether or not to use cutmix&mixup data augmentation. Default None.
@@ -70,6 +72,8 @@ class Trainer:
         self._label_smoothing = label_smoothing
         self._use_lr_scheduler = use_lr_scheduler
         self._use_cutmix = use_cutmix
+        self._scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+        self._autocaster = torch.autocast(device_type=self._device, dtype=torch.float16, enabled=use_amp)
         self._save_and_load_filename = save_and_load_filename
         
         # WARNING: currently has num_classes hardcoded. Should edit to read from dataloader.
@@ -118,20 +122,22 @@ class Trainer:
         self.neural_net.train()
         total_loss = 0.
         for images, labels in tqdm(dataloader, desc='Epoch Train Progress'):
-            images = images.to(self._device)
-            labels = labels.to(self._device)
-            
-            # 10% chance of using cutmix or mixup.
-            if self._use_cutmix and torch.rand([]) < 0.1: 
-                cutmix_or_mixup = v2.RandomChoice([self._cutmix, self._mixup])
-                images, labels = cutmix_or_mixup(images, labels)
+            with self._autocaster:
+                images = images.to(self._device)
+                labels = labels.to(self._device)
 
-            predictions = self.neural_net(images)
-            loss = self._loss(predictions, labels, label_smoothing=self._label_smoothing)
+                # 10% chance of using cutmix or mixup.
+                if self._use_cutmix and torch.rand([]) < 0.1: 
+                    cutmix_or_mixup = v2.RandomChoice([self._cutmix, self._mixup])
+                    images, labels = cutmix_or_mixup(images, labels)
+
+                predictions = self.neural_net(images)
+                loss = self._loss(predictions, labels, label_smoothing=self._label_smoothing)
             total_loss+=loss.detach()
             self._optimizer.zero_grad()
-            loss.backward()
-            self._optimizer.step()
+            self._scaler.scale(loss).backward()
+            self._scaler.step(self._optimizer)
+            self._scaler.update()
         # mean_loss = total_loss/len(dataloader.dataset) 
         if self._use_lr_scheduler:
             self._lr_scheduler.step()
@@ -143,14 +149,15 @@ class Trainer:
         size = len(dataloader.dataset)
         num_batches = len(dataloader)
         loss, correct = 0, 0
-
-        with torch.no_grad():
-            for images, labels in tqdm(dataloader, desc='Epoch Val Progress'):
-                labels = labels.to(self._device)
-                images = images.to(self._device)
-                predictions = self.neural_net(images)
-                loss += self._loss(predictions, labels)
-                correct += (predictions.argmax(1) == labels).to(torch.float).sum()
+    
+        with self._autocaster:
+            with torch.no_grad():
+                for images, labels in tqdm(dataloader, desc='Epoch Val Progress'):
+                    labels = labels.to(self._device)
+                    images = images.to(self._device)
+                    predictions = self.neural_net(images)
+                    loss += self._loss(predictions, labels)
+                    correct += (predictions.argmax(1) == labels).to(torch.float).sum()
 
         loss /= num_batches
         correct /= size
@@ -176,14 +183,14 @@ class Trainer:
         self.val_losses.append(val_loss.item())
         self.correct_fracs.append(correct_frac.item())
         if self._use_lr_scheduler:
-            lr = self._lr_scheduler.get_last_lr()
+            lr = self._lr_scheduler.get_last_lr()[0]
         else:
             lr = 'base'
         print(f'\r epoch = {self._trained_epochs}, '
               f'train loss = {train_loss:.3e}, '
               f'percent_correct = {(100 * correct_frac):>0.1f}%, '
               f'epochs since improvement = {since_improvement}, '
-              f'lr={lr}', end='\n')
+              f'lr={lr:.3e}', end='\n')
 
     def save(self):
         filename = self._save_and_load_filename
