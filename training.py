@@ -35,7 +35,7 @@ class Trainer:
                  use_amp: bool = True,
                  warmup_epochs: int = 20,
                  label_smoothing: float = 0.1,
-                 use_cutmix: bool = True,
+                 use_mixup: bool = False,
                  num_classes: int = None,
                  device = torch.device('cpu'),
                  save_and_load_filename: str = 'checkpoint/trainer_state.pkl'
@@ -56,8 +56,8 @@ class Trainer:
             use_amp (bool, optional): Whether to use automatic mixed precision. Defaults to True.
             warmup_epochs (int, optional): Epochs for linear warmup. Defaults to 20.
             label_smoothing (float, optional): label smoothing for cross entropy loss. Defaults to 0.1.
-            use_cutmix (bool, optional): Whether or not to use cutmix&mixup data augmentation. Default None.
-            num_classes (int, optional): number of classes. Needed if cutmix is to be used.
+            use_mixup (bool, optional): Whether or not to use mixup data augmentation. Default None.
+            num_classes (int, optional): number of classes. Needed if mixup is to be used.
             device (Device, optional): cpu or gpu to train on.
             save_and_load_filename (str, optional): directory for saving class instances.
         """
@@ -71,16 +71,16 @@ class Trainer:
         self._device = device
         self._label_smoothing = label_smoothing
         self._use_lr_scheduler = use_lr_scheduler
-        self._use_cutmix = use_cutmix
+        self._use_mixup = use_mixup
         self._scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
         self._autocaster = torch.autocast(device_type=self._device, dtype=torch.float16, enabled=use_amp)
         self._save_and_load_filename = save_and_load_filename
         
         # WARNING: currently has num_classes hardcoded. Should edit to read from dataloader.
-        if use_cutmix:
+        if use_mixup:
             if num_classes is None:
                 raise ValueError("num_classes must be defined if using cutmix")
-            self._cutmix = v2.CutMix(num_classes=num_classes)
+            # self._cutmix = v2.CutMix(num_classes=num_classes)
             self._mixup = v2.MixUp(num_classes=num_classes)
 
         optimisation_parameters = neural_net.parameters()
@@ -126,10 +126,9 @@ class Trainer:
                 images = images.to(self._device)
                 labels = labels.to(self._device)
 
-                # 10% chance of using cutmix or mixup.
-                if self._use_cutmix and torch.rand([]) < 0.1: 
-                    cutmix_or_mixup = v2.RandomChoice([self._cutmix, self._mixup])
-                    images, labels = cutmix_or_mixup(images, labels)
+                if self._use_mixup: 
+                    # cutmix_or_mixup = v2.RandomChoice([self._cutmix, self._mixup])
+                    images, labels = self._mixup(images, labels)
 
                 predictions = self.neural_net(images)
                 loss = self._loss(predictions, labels, label_smoothing=self._label_smoothing)
