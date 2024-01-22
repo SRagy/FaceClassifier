@@ -111,6 +111,7 @@ class Head(nn.Module):
         if double_layer is True:
             self.net = nn.Sequential(avg_layer, flatten_layer, 
                                      nn.Linear(in_dim, in_dim),
+                                     nn.ReLU(),
                                      nn.Linear(in_dim, num_classes))
         else:
             self.net = nn.Sequential(avg_layer, flatten_layer, nn.Linear(in_dim, num_classes))
@@ -132,7 +133,7 @@ class FaceNN(nn.Module):
                  num_classes = 7001,
                  double_layer = True
 ):
-        """_summary_
+        """Init function for face classication neural network. Uses a ConvNeXt-inspired design.
 
         Args:
             channels (list, optional): The number of input and output channels of each block group. 
