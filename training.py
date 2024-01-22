@@ -21,19 +21,19 @@ class Trainer:
         neural_net (nn.Module) - a neural network to be trained 
         train_losses (list) - a per epoch record of the training loss
         val_losses (list) - a per epoch record of the validation loss.
-        correct_fracs (     list) - a per epoch record of correctness rate.
+        correct_fracs (list) - a per epoch record of correctness rate.
     """
     def __init__(self,
                  train_loader: DataLoader,
                  val_loader: DataLoader,
                  neural_net: Module,
                  early_stop_bound: int = 20,
-                 max_epochs: int = 300,
+                 max_epochs: int = 50,
                  optimizer: Optimizer = AdamW,
-                 base_learning_rate: float = 5e-4,
+                 base_learning_rate: float = 1e-3,
                  use_lr_scheduler: bool = True,
                  use_amp: bool = True,
-                 warmup_epochs: int = 20,
+                 warmup_epochs: int = 10,
                  label_smoothing: float = 0.1,
                  use_mixup: bool = False,
                  num_classes: int = None,
@@ -49,7 +49,7 @@ class Trainer:
             neural_net (Module): A CNN or other neural net to be trained.
             early_stop_bound (int, optional): Used in early stopping condition - the number of 
             rounds of no improvement after which to stop. Defaults to 20.
-            max_epochs (int, optional): For if early stopping does not occur. Defaults to 300.
+            max_epochs (int, optional): For if early stopping does not occur. Defaults to 50.
             optimizer (Optimizer, optional): Defaults to AdamW.
             base_learning_rate (float, optional): Defaults to 3e-4.
             use_lr_scheduler (bool, optional): If True, uses scheduler with cosine decay. Defaults to True.
@@ -89,7 +89,7 @@ class Trainer:
             self._lr_scheduler=LinearWarmupCosineAnnealingLR(self._optimizer,
                                                              warmup_epochs = warmup_epochs,
                                                              max_epochs = max_epochs,
-                                                             warmup_start_lr=1e-4,
+                                                             warmup_start_lr=3e-4,
                                                              eta_min = 1e-5
                                                             )
 
@@ -140,7 +140,9 @@ class Trainer:
         # mean_loss = total_loss/len(dataloader.dataset) 
         if self._use_lr_scheduler:
             self._lr_scheduler.step()
-        return total_loss
+        # should probably count samples in loop explicitly, but this works for now.
+        mean_loss = total_loss/len(dataloader.dataset) 
+        return mean_loss
     
     
     def validation_loop(self, dataloader: DataLoader):
@@ -241,3 +243,101 @@ class Trainer:
 
         # Return for the sake of convenience. Also accessible as attribute of Trainer object.
         return self.neural_net
+    
+class FullTrainer(Trainer):
+    """Class for training on the train+dev sets together
+
+    Attributes:
+        neural_net (nn.Module) - a neural network to be trained 
+        train_losses (list) - a per epoch record of the training loss
+    """
+    def __init__(self,
+                 train_loader: DataLoader,
+                 neural_net: Module,
+                 early_stop_bound: int = 20,
+                 max_epochs: int = 50,
+                 optimizer: Optimizer = AdamW,
+                 base_learning_rate: float = 1e-3,
+                 use_lr_scheduler: bool = True,
+                 use_amp: bool = True,
+                 warmup_epochs: int = 10,
+                 label_smoothing: float = 0.1,
+                 use_mixup: bool = False,
+                 num_classes: int = None,
+                 device = torch.device('cpu'),
+                 save_and_load_filename: str = 'checkpoint/trainer_state.pkl'
+                 ) -> None:
+        """
+        Inits Trainer.
+
+        Args:
+            train_loader (DataLoader): dataloader class for training data.
+            val_loader (DataLoader): dataloader class for validation data.
+            neural_net (Module): A CNN or other neural net to be trained.
+            early_stop_bound (int, optional): Used in early stopping condition - the number of 
+            rounds of no improvement after which to stop. Defaults to 20.
+            max_epochs (int, optional): For if early stopping does not occur. Defaults to 300.
+            optimizer (Optimizer, optional): Defaults to AdamW.
+            base_learning_rate (float, optional): Defaults to 3e-4.
+            use_lr_scheduler (bool, optional): If True, uses scheduler with cosine decay. Defaults to True.
+            use_amp (bool, optional): Whether to use automatic mixed precision. Defaults to True.
+            warmup_epochs (int, optional): Epochs for linear warmup. Defaults to 20.
+            label_smoothing (float, optional): label smoothing for cross entropy loss. Defaults to 0.1.
+            use_mixup (bool, optional): Whether or not to use mixup data augmentation. Default None.
+            num_classes (int, optional): number of classes. Needed if mixup is to be used.
+            device (Device, optional): cpu or gpu to train on.
+            save_and_load_filename (str, optional): directory for saving class instances.
+        """
+        super().__init__(train_loader,
+                       None,
+                       neural_net,
+                       early_stop_bound,
+                       max_epochs,
+                       optimizer,
+                       base_learning_rate,
+                       use_lr_scheduler,
+                       use_amp,
+                       warmup_epochs,
+                       label_smoothing,
+                       use_mixup,
+                       num_classes,
+                       device,
+                       save_and_load_filename)
+        
+    def log_and_print(self, train_loss):
+        self.train_losses.append(train_loss.item())
+        if self._use_lr_scheduler:
+            lr = self._lr_scheduler.get_last_lr()[0]
+        else:
+            lr = 'base'
+        print(f'\r epoch = {self._trained_epochs}, '
+              f'train loss = {train_loss:.3e}, '
+              f'lr={lr:.3e}', end='\n')
+
+
+    def train(self, epochs = None):
+        """Trains the density estimator. If the total epochs trained 
+        already exceeds max_epochs raises an exception.
+
+        Args:
+            epochs (int, optional): Max epochs to train for. Defaults to 200.
+
+        Returns:
+            Module: Trained normalising flow
+        """
+        if epochs is None:
+            epochs = self._max_epochs
+        
+        if self._trained_epochs >= self._max_epochs:
+            raise Exception(f"Already trained density estimator for the \
+                            maximum number of epochs ({self._max_epochs})")
+
+        best_loss = torch.inf
+        rounds_since_improvement = 0
+        for i in range(epochs):
+            self._trained_epochs += 1
+            train_loss = self.training_loop(self._train_loader)
+            self.log_and_print(train_loss)
+            self.save()
+            if self._trained_epochs == self._max_epochs:
+                break
