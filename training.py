@@ -15,7 +15,7 @@ import pickle
 
 
 class Trainer:
-    """Class for training a normalising flow.
+    """Class for supervised training of a neural network classifier.
 
     Attributes:
         neural_net (nn.Module) - a neural network to be trained 
@@ -28,7 +28,7 @@ class Trainer:
                  val_loader: DataLoader,
                  neural_net: Module,
                  early_stop_bound: int = 20,
-                 max_epochs: int = 50,
+                 max_epochs: int = 60,
                  optimizer: Optimizer = AdamW,
                  base_learning_rate: float = 1e-3,
                  use_lr_scheduler: bool = True,
@@ -37,7 +37,7 @@ class Trainer:
                  label_smoothing: float = 0.1,
                  use_mixup: bool = False,
                  num_classes: int = None,
-                 device = torch.device('cpu'),
+                 device: device = torch.device('cpu'),
                  save_and_load_filename: str = 'checkpoint/trainer_state.pkl'
                  ) -> None:
         """
@@ -49,7 +49,7 @@ class Trainer:
             neural_net (Module): A CNN or other neural net to be trained.
             early_stop_bound (int, optional): Used in early stopping condition - the number of 
             rounds of no improvement after which to stop. Defaults to 20.
-            max_epochs (int, optional): For if early stopping does not occur. Defaults to 50.
+            max_epochs (int, optional): For if early stopping does not occur. Defaults to 60.
             optimizer (Optimizer, optional): Defaults to AdamW.
             base_learning_rate (float, optional): Defaults to 3e-4.
             use_lr_scheduler (bool, optional): If True, uses scheduler with cosine decay. Defaults to True.
@@ -76,7 +76,6 @@ class Trainer:
         self._autocaster = torch.autocast(device_type=self._device, dtype=torch.float16, enabled=use_amp)
         self._save_and_load_filename = save_and_load_filename
         
-        # WARNING: currently has num_classes hardcoded. Should edit to read from dataloader.
         if use_mixup:
             if num_classes is None:
                 raise ValueError("num_classes must be defined if using cutmix")
@@ -98,12 +97,13 @@ class Trainer:
         self.val_losses = []
 
 
-    def _loss(self, outputs: Tensor, labels: Tensor, label_smoothing = 0.0):
+    def _loss(self, outputs: Tensor, labels: Tensor, label_smoothing: float = 0.0):
         """Cross-entropy loss
 
         Args:
             outputs (Tensor): The output from the neural net classifier
             labels (Tensor): ground truth labels (subject to denoising procedures like mixup)
+            label_smoothing (float): label smoothing parameter for cross entropy loss.
 
         Returns:
             Tensor: value of loss.
@@ -146,6 +146,15 @@ class Trainer:
     
     
     def validation_loop(self, dataloader: DataLoader):
+        """Calculates the loss function on the validation set, as well as the percentage of
+        images correctly classfied
+
+        Args:
+            dataloader (DataLoader): A dataloader with labelled data.
+
+        Returns:
+            Tuple(Tensor, Tensor): (validation loss, classication success ratio)
+        """
         self.neural_net.eval()
         size = len(dataloader.dataset)
         num_batches = len(dataloader)
@@ -164,22 +173,19 @@ class Trainer:
         correct /= size
         # print(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {loss:>4f} \n")
         return loss, correct
-    
-#     def validation_loop(self, dataloader: DataLoader):
-#         """Checks validation loss
+        
+    def log_and_print(self, train_loss: Tensor,
+                      val_loss: Tensor, 
+                      correct_frac: Tensor, 
+                      since_improvement: int):
+        """Record loss vlaues and print for current epoch.
 
-#         Args:
-#             dataloader (DataLoader): Expects a dataloader with unlabelled data. 
-#         """
-#         self.neural_net.eval()
-#         for params, labels in dataloader:
-#             images = images.to(self._device)
-#             predictions = neural_net(images)
-#             labels = labels.to(self._device)
-#             total_loss += self._loss(predictions, labels, label_smoothing=0.0).detach()
-#         return total_loss
-    
-    def log_and_print(self, train_loss, val_loss, correct_frac, since_improvement):
+        Args:
+            train_loss (Tensor): The training loss for the current epoch
+            val_loss (Tensor): The validation loss for the current epoch
+            correct_frac (Tensor): The classification success ratio
+            since_improvement (int): Number of rounds val_loss last decreased
+        """
         self.train_losses.append(train_loss.item())
         self.val_losses.append(val_loss.item())
         self.correct_fracs.append(correct_frac.item())
@@ -187,33 +193,37 @@ class Trainer:
             lr = self._lr_scheduler.get_last_lr()[0]
         else:
             lr = 'base'
-        print(f'\r epoch = {self._trained_epochs}, '
+        print(f'epoch = {self._trained_epochs}, '
               f'train loss = {train_loss:.3e}, '
               f'percent_correct = {(100 * correct_frac):>0.1f}%, '
               f'epochs since improvement = {since_improvement}, '
               f'lr={lr:.3e}', end='\n')
 
     def save(self):
+        """Saves the trainer state to self._save_and_load_filename
+        """
         filename = self._save_and_load_filename
         with open(filename, 'wb') as f:
             pickle.dump(self.__dict__, f)
             print(f"saved trainer state at epoch {self._trained_epochs}")
 
     def load(self):
+        """Loads the trainer state from self._save_and_load_filename
+        """
         filename = self._save_and_load_filename
         with open(filename, 'rb') as f:
             self.__dict__ = pickle.load(f)
         print(f"loaded trainer state at epoch {self._trained_epochs}")
 
-    def train(self, epochs = 300):
-        """Trains the density estimator. If the total epochs trained 
+    def train(self, epochs = 60):
+        """Trains the neural net. If the total epochs trained 
         already exceeds max_epochs raises an exception.
 
         Args:
-            epochs (int, optional): Max epochs to train for. Defaults to 200.
+            epochs (int, optional): Max epochs to train for. Defaults to 60.
 
         Returns:
-            Module: Trained normalising flow
+            Module: Trained neural net
         """
         if self._trained_epochs >= self._max_epochs:
             raise Exception(f"Already trained density estimator for the \
@@ -245,7 +255,7 @@ class Trainer:
         return self.neural_net
     
 class FullTrainer(Trainer):
-    """Class for training on the train+dev sets together
+    """Class for training a supervised neural network on the train+dev sets together
 
     Attributes:
         neural_net (nn.Module) - a neural network to be trained 
@@ -310,7 +320,7 @@ class FullTrainer(Trainer):
             lr = self._lr_scheduler.get_last_lr()[0]
         else:
             lr = 'base'
-        print(f'\r epoch = {self._trained_epochs}, '
+        print(f'epoch = {self._trained_epochs}, '
               f'train loss = {train_loss:.3e}, '
               f'lr={lr:.3e}', end='\n')
 
@@ -320,10 +330,10 @@ class FullTrainer(Trainer):
         already exceeds max_epochs raises an exception.
 
         Args:
-            epochs (int, optional): Max epochs to train for. Defaults to 200.
+            epochs (int, optional): Max epochs to train for. Defaults to None.
 
         Returns:
-            Module: Trained normalising flow
+            Module: Trained normalising neural net
         """
         if epochs is None:
             epochs = self._max_epochs
@@ -332,9 +342,7 @@ class FullTrainer(Trainer):
             raise Exception(f"Already trained density estimator for the \
                             maximum number of epochs ({self._max_epochs})")
 
-        best_loss = torch.inf
-        rounds_since_improvement = 0
-        for i in range(epochs):
+        for _ in range(epochs):
             self._trained_epochs += 1
             train_loss = self.training_loop(self._train_loader)
             self.log_and_print(train_loss)

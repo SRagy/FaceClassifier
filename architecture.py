@@ -49,7 +49,7 @@ class Body(nn.Module):
     """The main body of the classifier, modelled primarily after ConvNeXt-T
     with some experimental alterations, such as using inverse bottleneck blocks
     to step down the resolution between each major segment of the architecture.
-    The ConvNeXt architecture simply uses
+    The ConvNeXt architecture simply uses a strided convolution.
 
     Additionally, has to be bit smaller than ConvNeXt-T to fit into the required
     21m parameter limit.
@@ -58,6 +58,13 @@ class Body(nn.Module):
                  channels = [80,160,320,640],
                  blocks = [2,2,6,2]
                  ):
+        """init function for the body of the network
+
+        Args:
+            channels (list, optional): The number of input and output channels of each block group. 
+            Inverse bottlneck blocks are used to step between these. Defaults to [80,160,320,640].
+            blocks (list, optional): The number of blocks in each block group. Defaults to [2,2,6,2].
+        """
         
         super().__init__()
         self.blocks=[]
@@ -83,15 +90,19 @@ class Body(nn.Module):
 
 class Head(nn.Module):
     """A small MLP classifier to act as the head of the image classifier
-
-    Args:
-        nn (_type_): _description_
     """
-    def __init__(self, input_channels = 512, 
-                 pool_dim = 1,
-                 num_classes = 7001,
-                 double_layer=True):
-        
+    def __init__(self, input_channels: int = 512, 
+                 pool_dim: int = 1,
+                 num_classes: int = 7001,
+                 double_layer: bool =True):
+        """The classifier at the head of the CNN.
+
+        Args:
+            input_channels (int, optional): Input features. Defaults to 512.
+            pool_dim (int, optional): Number of dimensions after pooling for avg pool. Defaults to 1.
+            num_classes (int, optional): Number of class labels to discriminate. Defaults to 7001.
+            double_layer (bool, optional): If true, uses two linear layers, else just one. Defaults to True.
+        """
         super().__init__()
         avg_layer = nn.AdaptiveAvgPool2d(pool_dim)
         flatten_layer = nn.Flatten()
@@ -111,6 +122,8 @@ class Head(nn.Module):
     
 
 class FaceNN(nn.Module):
+    """Classifier designed for facial recognition on small datasets.
+    """
     def __init__(self,
                  channels = [80,160,320,640],
                  blocks = [2,2,6,2],
@@ -119,6 +132,18 @@ class FaceNN(nn.Module):
                  num_classes = 7001,
                  double_layer = True
 ):
+        """_summary_
+
+        Args:
+            channels (list, optional): The number of input and output channels of each block group. 
+            Inverse bottlneck blocks are used to step between these. Defaults to [80,160,320,640].
+            blocks (list, optional): The number of blocks in each block group. Defaults to [2,2,6,2].
+            stem_type (str, optional): ConvNeXT patchify or resnet classic start of network. Defaults to 'patchify'.
+            pool_dim (int, optional): Pooling dimensions for avg pooling before classifier. Defaults to 1.
+            num_classes (int, optional): Number of class labels to discriminate. Defaults to 7001.
+            double_layer (bool, optional): Whether to make a 2-layler MLP instead of single linear layer classifier. 
+            Defaults to True.
+        """
 
         super().__init__()
         self.stem = Stem(channels[0], stem_type)

@@ -2,10 +2,11 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import v2
+from typing import Callable
 from PIL import Image
 import glob
 
-
+# Default transformations for training and validation sets.
 default_train_transforms = v2.Compose([v2.RandomRotation(30),
                                        v2.RandomHorizontalFlip(),
                                        v2.ColorJitter(0.2,0.2,0.2,0.2),
@@ -19,7 +20,21 @@ default_val_transforms  = v2.Compose([v2.ToImage(),
 
 
 class DefaultLoader(DataLoader):
-    def __init__(self, directory, transform=v2.ToTensor(), shuffle=True, keep_ratio=1, **kwargs):
+    """dataloader getter for ImageFolder type datasets.
+    """
+    def __init__(self, directory: str, 
+                 transform: Callable = v2.ToTensor(), 
+                 shuffle: bool = True, 
+                 keep_ratio: float = 1, 
+                 **kwargs):
+        """A class for getting dataloaders for ImageFolder datasets.
+
+        Args:
+            directory (str): the location of the image folder
+            transform (Callable, optional): The transform to apply to the PIL images. Defaults to v2.ToTensor().
+            shuffle (bool, optional): dataloader shuffle parameter. Defaults to True.
+            keep_ratio (float, optional): Amount of the dataset to keep. Useful for prototyping. Defaults to 1.
+        """
         dataset = ImageFolder(directory, transform)
         slice_index = int(keep_ratio*len(dataset))
         self.label_count = len(set(dataset.targets[:slice_index]))
@@ -28,17 +43,45 @@ class DefaultLoader(DataLoader):
 
     @classmethod
     def load_train(cls, transform=v2.ToTensor(), shuffle=True, *args, **kwargs):
+        """Factory method for loading train set from default directory.
+
+        Args:
+            transform (Callable, optional): The transform to apply to the PIL images. Defaults to v2.ToTensor().
+            shuffle (bool, optional): dataloader shuffle parameter. Defaults to True.
+
+        Returns:
+            DataLoader: dataloader instance.
+        """
         return cls('data/train', transform, shuffle=shuffle, *args, **kwargs)
 
     @classmethod
     def load_val(cls, *args, **kwargs):
+        """Factory method for loading validation set from default directory.
+
+        Returns:
+            DataLoader: dataloader instance.
+        """
         return cls('data/dev', *args, **kwargs)
     
 class FullLoader(DataLoader):
     """
     A dataloader class intended for training with both the train and dev datasets.
     """
-    def __init__(self, dir1, dir2, transform=v2.ToTensor(), shuffle=True, keep_ratio=1, **kwargs):
+    def __init__(self, dir1: str, 
+                 dir2: str, 
+                 transform: Callable = v2.ToTensor(), 
+                 shuffle: bool = True, 
+                 keep_ratio: int = 1, 
+                 **kwargs):
+        """_summary_
+
+        Args:
+            dir1 (str): _description_
+            dir2 (str): _description_
+            transform (Callable, optional): _description_. Defaults to v2.ToTensor().
+            shuffle (bool, optional): _description_. Defaults to True.
+            keep_ratio (int, optional): _description_. Defaults to 1.
+        """
         dataset1 = ImageFolder(dir1, transform)
         dataset2 = ImageFolder(dir2, transform)
         dataset = ConcatDataset([dataset1, dataset2])
@@ -74,7 +117,15 @@ class DefaultTest(DataLoader):
         super().__init__(dataset)
 
 
-def calculate_mean_std(train_loader):
+def calculate_mean_std(train_loader: DataLoader):
+    """Calculate mean and deviation for normalizing images.
+
+    Args:
+        train_loader (Dataloader): The dataloader for the image dataset.
+
+    Returns:
+        Tuple: (mean, std)
+    """
     sum_running_mean = 0
     sum_exp_std = 0
     for num_batches, (img_tensor, _) in enumerate(train_loader):

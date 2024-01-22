@@ -7,7 +7,7 @@ import torch
 # batch norm layers after activation rather than before.
 # There is not a strong rationale for these differences; some of it is updating things to 
 # have a more modern flavour (e.g. adding batch norm to original ResNet blocks), some of it
-# is just arbitrary. It would be worth doing some testing to see what's best.
+# is more arbitrary. It would be worth doing some additional testing to see what's best.
 
 class ClassicBottleneck(nn.Module):
     """A classic residual bottlneck block, as in ResNet. Consists of a 
