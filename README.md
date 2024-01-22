@@ -16,13 +16,10 @@ The end result is a ~90% success rate in classifying faces from 7001 possible id
 ## Installation
 ```
 git clone https://github.com/SRagy/FaceClassifier.git
+cd FaceClassifier
+pip install -r requirements.txt
 ```
-Navigate to the install folder and then run
-
-```
-pip install -r requirements.txt.
-```
-Note that the code uses some experimental features from packages such as pytorch-lightning, hence the exact package versions are given in requirements.txt as the implementations of these functions may change in the future. It is hence recommended to run this code in a fresh environment.
+Note that the code uses some experimental features from packages such as pytorch-lightning, hence the exact package versions are given in requirements.txt as the implementations of these functions may change in the future. It is recommended to run this code in a fresh environment.
 
 The data is obtainable here: https://www.kaggle.com/competitions/11-785-f23-hw2p2-classification/data
 
