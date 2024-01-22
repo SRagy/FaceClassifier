@@ -1,18 +1,21 @@
 import torch
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import v2
 from PIL import Image
 import glob
 
 
-default_train_transforms = v2.Compose([v2.RandomRotation(20),
+default_train_transforms = v2.Compose([v2.RandomRotation(30),
                                        v2.RandomHorizontalFlip(),
-                                       v2.ColorJitter(0.25,0.25,0.25,0.25),
+                                       v2.ColorJitter(0.2,0.2,0.2,0.2),
                                        v2.ToImage(), 
                                        v2.ToDtype(torch.float32, scale=True),
                                        v2.Normalize([0.5103, 0.4014, 0.3509], [0.2708, 0.2363, 0.2226])])
 
+default_val_transforms  = v2.Compose([v2.ToImage(),
+                                      v2.ToDtype(torch.float32, scale=True), 
+                                      v2.Normalize([0.5103, 0.4014, 0.3509], [0.2708, 0.2363, 0.2226])])
 
 
 class DefaultLoader(DataLoader):
@@ -20,7 +23,6 @@ class DefaultLoader(DataLoader):
         dataset = ImageFolder(directory, transform)
         slice_index = int(keep_ratio*len(dataset))
         self.label_count = len(set(dataset.targets[:slice_index]))
-        # self.label_count = int(keep_ratio*len(set(dataset.targets)))
         dataset = Subset(dataset, range(slice_index))
         super().__init__(dataset, shuffle=shuffle, **kwargs)
 
@@ -31,6 +33,20 @@ class DefaultLoader(DataLoader):
     @classmethod
     def load_val(cls, *args, **kwargs):
         return cls('data/dev', *args, **kwargs)
+    
+class FullLoader(DataLoader):
+    """
+    A dataloader class intended for training with both the train and dev datasets.
+    """
+    def __init__(self, dir1, dir2, transform=v2.ToTensor(), shuffle=True, keep_ratio=1, **kwargs):
+        dataset1 = ImageFolder(dir1, transform)
+        dataset2 = ImageFolder(dir2, transform)
+        dataset = ConcatDataset([dataset1, dataset2])
+        slice_index = int(keep_ratio*len(dataset))
+        self.label_count = len(set(dataset1.targets[:slice_index])) # only works if both datasets the same
+        dataset = Subset(dataset, range(slice_index))
+        super().__init__(dataset, shuffle=shuffle, **kwargs)
+
 
 class ImageLoader(Dataset):
     """A simple dataset for loading unlabelled images, as in
