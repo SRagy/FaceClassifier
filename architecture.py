@@ -89,14 +89,21 @@ class Head(nn.Module):
     """
     def __init__(self, input_channels = 512, 
                  pool_dim = 1,
-                 num_classes = 7001):
+                 num_classes = 7001,
+                 double_layer=True):
         
         super().__init__()
         avg_layer = nn.AdaptiveAvgPool2d(pool_dim)
         flatten_layer = nn.Flatten()
         in_dim = input_channels*pool_dim**2
-
-        self.net = nn.Sequential(avg_layer, flatten_layer, nn.Linear(in_dim, num_classes))
+        
+        if double_layer is True:
+            self.net = nn.Sequential(avg_layer, flatten_layer, 
+                                     nn.Linear(in_dim, in_dim),
+                                     nn.Linear(in_dim, num_classes))
+        else:
+            self.net = nn.Sequential(avg_layer, flatten_layer, nn.Linear(in_dim, num_classes))
+            
 
     def forward(self,x):
         return self.net(x)
@@ -109,13 +116,14 @@ class FaceNN(nn.Module):
                  blocks = [2,2,6,2],
                  stem_type = 'patchify',
                  pool_dim = 1,
-                 num_classes = 7001
+                 num_classes = 7001,
+                 double_layer = True
 ):
 
         super().__init__()
         self.stem = Stem(channels[0], stem_type)
         self.body = Body(channels, blocks)
-        self.head = Head(channels[-1], pool_dim, num_classes)
+        self.head = Head(channels[-1], pool_dim, num_classes, double_layer)
 
     def forward(self,x):
         x = self.stem(x)
